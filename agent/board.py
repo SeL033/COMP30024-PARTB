@@ -70,15 +70,15 @@ class State:
         board_index = coord.r*8 + coord.c
         was_red = self.red_turn
         target_index = board_index + direction.r*8 + direction.c
-        eatten_stack_delta = self.board[target_index] - CENTRE
-        action_log = (EAT, board_index, was_red, eatten_stack_delta, target_index)
+        eaten_stack_delta = self.board[target_index] - CENTRE
+        action_log = (EAT, board_index, was_red, eaten_stack_delta, target_index)
         
         if was_red:
             self.blue_stacks -= 1
-            self.blue_tokens += eatten_stack_delta
+            self.blue_tokens += eaten_stack_delta
         else:
             self.red_stacks -= 1
-            self.red_tokens -= eatten_stack_delta
+            self.red_tokens -= eaten_stack_delta
         self.board[target_index] = self.board[board_index]
         self.board[board_index] = CENTRE
 
@@ -199,17 +199,17 @@ class State:
             self.board[board_index] += move_stack_delta
 
         elif action == EAT:
-            _, board_index, was_red, eatten_stack_delta, target_index = prev_action
+            _, board_index, was_red, eaten_stack_delta, target_index = prev_action
             self.playturn_count -= 1
             self.red_turn = was_red
             self.board[board_index] = self.board[target_index]
-            self.board[target_index] = CENTRE + eatten_stack_delta
+            self.board[target_index] = CENTRE + eaten_stack_delta
             if was_red:
                 self.blue_stacks += 1
-                self.blue_tokens -= eatten_stack_delta
+                self.blue_tokens -= eaten_stack_delta
             else:
                 self.red_stacks += 1
-                self.red_tokens += eatten_stack_delta
+                self.red_tokens += eaten_stack_delta
 
         elif action == CASCADE:
             _, was_red, save_scan, token_and_stacks = prev_action
