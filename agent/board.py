@@ -285,3 +285,18 @@ class State:
             if self.red_tokens > self.blue_tokens: return PlayerColor.RED
             if self.blue_tokens > self.red_tokens: return PlayerColor.BLUE
         return None
+
+    # extra function for MCTS 
+    # (cloning new states and throwing them away after is better than tracking undo for MCTS)
+    def clone(self):
+        new = State.__new__(State)
+        new.board = bytearray(self.board)
+        new.red_tokens = self.red_tokens
+        new.red_stacks = self.red_stacks
+        new.blue_tokens = self.blue_tokens
+        new.blue_stacks = self.blue_stacks
+        new.red_turn = self.red_turn
+        new.placement_count = self.placement_count
+        new.playturn_count = self.playturn_count
+        new.prev_actions = []
+        return new
