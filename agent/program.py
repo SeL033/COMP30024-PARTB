@@ -82,7 +82,7 @@ class Agent:
 
     def _placement_action(self) -> PlaceAction:
         """Greedy heuristic: pick the highest-scoring legal placement."""
-        candidates = self._gs._legal_place_actions()
+        candidates = self._gs.legal_place_actions()
         return max(candidates,
                    key=lambda a: placement_score(a.coord, self._gs, self._color))
         
