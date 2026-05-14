@@ -328,3 +328,14 @@ def placement_score(coord, state, color):
         w_spacing * spacing_ratio +
         w_cascade * cascade_ratio)
 
+def high_value_actions(state, my_color_int):
+    result = []
+    for action in state.legal_actions():
+        if isinstance(action, EatAction):
+            result.append(action)
+        elif isinstance(action, CascadeAction):
+            src_index = action.coord.r * BOARD_N + action.coord.c
+            enemy_lost, own_lost = simulate_cascade(state, src_index, action.direction, my_color_int)
+            if enemy_lost - own_lost > 0:
+                result.append(action)
+    return result
