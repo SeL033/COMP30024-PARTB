@@ -5,6 +5,7 @@ from referee.game import PlayerColor, Action
 from referee.game.constants import PLACEMENT_TURNS
 from .board import State
 from .negamax import negamax_action
+from .evaluate import placement_score
 
 class Agent:
     """
@@ -18,7 +19,8 @@ class Agent:
 
     def action(self, **referee: dict) -> Action:
         if self._state.placement_count < PLACEMENT_TURNS:
-            return self._state.legal_actions()[0]
+            actions = self._state.legal_actions()
+            return max(actions, key=lambda a: placement_score(a.coord, self._state, self._color))
         return negamax_action(self._state, time_limit=2.0)
 
     def update(self, color: PlayerColor, action: Action, **referee: dict):

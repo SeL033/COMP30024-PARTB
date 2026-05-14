@@ -1,7 +1,7 @@
 import time
 import math
 from referee.game import PlayerColor
-from .evaluate import evaluate
+from .evaluate import evaluate, order_actions
 
 def _turn_color(state):
     return PlayerColor.RED if state.red_turn else PlayerColor.BLUE
@@ -25,6 +25,9 @@ def _negamax(state, depth, alpha, beta, deadline):
     actions = state.legal_actions()
     if not actions:
         return _terminal_value(state, _turn_color(state))
+    
+    my_color_int = 1 if state.red_turn else -1
+    actions = order_actions(actions, state, my_color_int)
     
     best_value = -math.inf
     for action in actions:
@@ -65,6 +68,9 @@ def negamax_action(state, time_limit=2.0):
         raise RuntimeError("no legal actions")
     if len(actions) == 1:
         return actions[0]
+    
+    my_color_int = 1 if state.red_turn else -1
+    actions = order_actions(actions, state, my_color_int)
     
     deadline = time.time() + time_limit
     best_action = actions[0]
