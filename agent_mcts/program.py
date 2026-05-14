@@ -4,7 +4,7 @@
 from referee.game import PlayerColor, Action
 from referee.game.constants import PLACEMENT_TURNS, MAX_TURNS
 from .board import State
-from .negamax import negamax_action
+from .mcts import mcts_action
 from .evaluate import placement_score
 
 MAX_OUR_MOVES = 60
@@ -23,6 +23,7 @@ class Agent:
     def __init__(self, color: PlayerColor, **referee: dict):
         self._color = color
         self._state = State()
+        self._mcts_root = None
 
     def action(self, **referee: dict) -> Action:
         time_rem = referee.get("time_remaining")
@@ -35,8 +36,14 @@ class Agent:
         
         if self._state.placement_count < PLACEMENT_TURNS:
             actions = self._state.legal_actions()
-            return max(actions, key=lambda a: placement_score(a.coord, self._state, self._color))
-        return negamax_action(self._state, time_limit=budget)
+            return max(actions, key=lambda action: placement_score(action.coord, self._state, self._color))
+        action, self._mcts_root = mcts_action(self._state, time_limit=budget, root=self._mcts_root)
+        return action
 
     def update(self, color: PlayerColor, action: Action, **referee: dict):
         self._state.apply(action)
+        if self._mcts_root is not None:
+            child = next((c for c in self._mcts_root.children if c.action == action), None)
+            self._mcts_root = child
+            if self._mcts_root is not None:
+                self._mcts_root.parent = None
