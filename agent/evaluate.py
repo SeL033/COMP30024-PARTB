@@ -3,11 +3,11 @@ from referee.game.constants import BOARD_N, INITIAL_STACK_HEIGHT, PLACEMENT_TURN
 from .board import CENTRE
 
 # weights (used for tuning)
-W_TOKEN_ADV = 0.25
+W_TOKEN_ADV = 0.35      # was 0.25
 W_TACTICAL = 0.30
-W_HEIGHT = 0.12
+W_HEIGHT = 0.05         # was 0.12
 W_CENTER = 0.20
-W_MOBILITY = 0.13
+W_MOBILITY = 0.10       # was 0.13
 
 # (placement weights)
 W_PLACE_CENTRALITY_FIRST = 0.45

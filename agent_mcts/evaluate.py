@@ -3,11 +3,11 @@ from referee.game.constants import BOARD_N, INITIAL_STACK_HEIGHT, PLACEMENT_TURN
 from .board import CENTRE
 
 # weights (used for tuning)
-W_TOKEN_ADV = 0.25
+W_TOKEN_ADV = 0.35      # was 0.25
 W_TACTICAL = 0.30
-W_HEIGHT = 0.12
+W_HEIGHT = 0.05         # was 0.12
 W_CENTER = 0.20
-W_MOBILITY = 0.13
+W_MOBILITY = 0.10       # was 0.13
 
 # (placement weights)
 W_PLACE_CENTRALITY_FIRST = 0.45
@@ -234,10 +234,13 @@ def action_priority(action, state, my_color_int):
         src_index = action.coord.r * BOARD_N + action.coord.c
         enemy_lost, own_lost = simulate_cascade(state, src_index, action.direction, my_color_int)
         net = enemy_lost - own_lost
-        if net > 0:
+        if net > 3:
             return 10 + net
-        return net
-    
+        elif net > 0:
+            return 5 + net
+        else:
+            return net
+        
     if isinstance(action, MoveAction):
         return 1
     return 0
