@@ -2,15 +2,18 @@ from referee.game import PlayerColor, Direction, Coord, EatAction, MoveAction, C
 from referee.game.constants import BOARD_N, INITIAL_STACK_HEIGHT, PLACEMENT_TURNS
 from .board import CENTRE
 
-# weights (tuned) - must sum to 1.0
-W_TOKEN_ADV = 0.22
-W_TACTICAL = 0.33
-W_HEIGHT = 0.12
-W_CENTER = 0.15
-W_MOBILITY = 0.18
+"""
+MCTS solution created for performance comparing purpose.
+"""
 
-# placement weights (tuned)
-# Placement-phase weights for RED (first player) and BLUE (second player)
+# weights (used for tuning)
+W_TOKEN_ADV = 0.35
+W_TACTICAL = 0.30
+W_HEIGHT = 0.05
+W_CENTER = 0.20
+W_MOBILITY = 0.10
+
+# (placement weights)
 W_PLACE_CENTRALITY_FIRST = 0.40
 W_PLACE_SPACING_FIRST = 0.20
 W_PLACE_CASCADE_FIRST = 0.40
@@ -24,13 +27,9 @@ EPS = 1e-9
 CARDINAL_DIRS = (Direction.Up, Direction.Down, Direction.Left, Direction.Right)
 
 def _dist_to_center_index(index):
-    # Manhattan distance from a flat board index to the board centre (3.5, 3.5)
     return abs(index // BOARD_N - CENTER_COORD) + abs(index % BOARD_N - CENTER_COORD)
 
 def simulate_cascade(state, src_index, direction, player_color_int):
-    # Simulate a cascade from src_index in direction for player_color_int on a clone
-    # of the board, without modifying state. Returns (enemy_tokens_lost, own_tokens_lost).
-    # Tokens are lost only when pushed off the board edge.
     src_byte = state.board[src_index]
     src_color_int = 1 if src_byte > CENTRE else (-1 if src_byte < CENTRE else 0)
     if src_color_int != player_color_int:
@@ -66,8 +65,6 @@ def simulate_cascade(state, src_index, direction, player_color_int):
     return enemy_lost, own_lost
 
 def _push(work, index, increment, row, dir_c, attacker_color_int):
-    # Recursively push the stack at index one step in the cascade direction.
-    # Returns (own_tokens_pushed_off, enemy_tokens_pushed_off) from the attacker's perspective.
     cell = work[index]
     cell_height = abs(cell - CENTRE)
     cell_color_int = 1 if cell > CENTRE else -1
@@ -93,8 +90,6 @@ def _push(work, index, increment, row, dir_c, attacker_color_int):
     return attacker_loss, defender_loss
 
 def _estimate_mobility(state, color_int):
-    # Count the number of legal actions available to color_int without generating them explicitly.
-    # Used as a fast mobility estimate inside evaluate().
     count = 0
     for index in range(BOARD_N * BOARD_N):
         cell_byte = state.board[index]
@@ -116,14 +111,10 @@ def _estimate_mobility(state, color_int):
             elif stack_height >= dest_height:
                 count += 1
         if stack_height >= 2:
-            count += 4 # CASCADE available in all 4 directions
+            count += 4
     return count
 
 def _tactical_score(state, my_color_int):
-    # Compute a tactical score in [-1, 1] capturing:
-    #   - immediate EAT opportunities for each side
-    #   - best non-suicidal CASCADE net gain (enemy_lost - own_lost) for each side
-    # Net gain > 0 only; suicidal cascades (net <= 0) are excluded.
     opp_color_int = -my_color_int
     
     my_eat_gain = 0
@@ -138,7 +129,6 @@ def _tactical_score(state, my_color_int):
         stack_height = cell_byte - CENTRE if cell_color_int == 1 else CENTRE - cell_byte
         row, col = index // BOARD_N, index % BOARD_N
         
-        # Check immediate EAT opportunities in all cardinal directions
         for direction in CARDINAL_DIRS:
             adjacent_row = row + direction.r
             adjacent_col = col + direction.c
@@ -153,7 +143,6 @@ def _tactical_score(state, my_color_int):
                 opp_eat_threat += dest_height
                 
         if stack_height < 2: continue
-        # Check CASCADE net gain in all cardinal directions
         for direction in CARDINAL_DIRS:
             enemy_lost, own_lost = simulate_cascade(state, index, direction, cell_color_int)
             net = enemy_lost - own_lost
@@ -174,8 +163,6 @@ def _tactical_score(state, my_color_int):
 
 
 def evaluate(state, color):
-    # Heuristic evaluation of state from color's perspective.
-    # Returns a value in [-1, 1]: 1.0 = win, -1.0 = loss, 0.0 = draw/neutral.
     my_color_int = 1 if color == PlayerColor.RED else -1
     opp_color_int = -my_color_int
     
@@ -193,10 +180,8 @@ def evaluate(state, color):
     total = my_tokens + opp_tokens
     if total == 0: return 0.0
     
-    # Token advantage: direct measure of progress toward win condition
     token_adv = (my_tokens - opp_tokens) / total
     
-    # Height and centrality: single pass over the board
     my_height_sum = 0
     opp_height_sum = 0
     my_center_sum = 0.0
@@ -216,15 +201,12 @@ def evaluate(state, color):
             
     my_avg_h = (my_height_sum / my_stacks_count) if my_stacks_count > 0 else 0.0
     opp_avg_h = (opp_height_sum / opp_stacks_count) if opp_stacks_count > 0 else 0.0
-    # Average height advantage: taller stacks can eat more and cascade further
     height_adv = (my_avg_h - opp_avg_h) / max(my_avg_h + opp_avg_h, 1)
     
     my_center = my_center_sum / max(my_stacks_count, 1)
     opp_center = opp_center_sum / max(opp_stacks_count, 1)
-    # Centrality advantage: central stacks have more available directions
     center_adv = (opp_center - my_center) / 7.0
     
-    # Mobility: only meaningful in the play phase
     if in_play:
         my_actions = _estimate_mobility(state, my_color_int)
         opp_actions = _estimate_mobility(state, opp_color_int)
@@ -243,9 +225,6 @@ def evaluate(state, color):
         W_MOBILITY * mobility_adv)
 
 def action_priority(action, state, my_color_int):
-    # Score an action for move ordering; higher = search first.
-    # EAT and profitable CASCADE share the same base score (10) so they compete on actual gain.
-    # Suicidal cascades (net <= 0) get negative priority and are searched last.
     if isinstance(action, EatAction):
         dest_row = action.coord.r + action.direction.r
         dest_col = action.coord.c + action.direction.c
@@ -259,30 +238,26 @@ def action_priority(action, state, my_color_int):
         src_index = action.coord.r * BOARD_N + action.coord.c
         enemy_lost, own_lost = simulate_cascade(state, src_index, action.direction, my_color_int)
         net = enemy_lost - own_lost
-        if net > 0:
+        if net > 3:
             return 10 + net
-        return net
-    
+        elif net > 0:
+            return 5 + net
+        else:
+            return net
+        
     if isinstance(action, MoveAction):
         return 1
     return 0
 
 def order_actions(actions, state, my_color_int):
-    # Sort actions by priority descending for alpha-beta move ordering
     return sorted(actions, key=lambda action: action_priority(action, state, my_color_int), reverse=True)
 
 
 def placement_score(coord, state, color):
-    # Score a candidate placement coordinate using three ratio-based components:
-    #   centrality_ratio: favour positions closer to the board centre
-    #   spacing_ratio:    favour balanced inter-stack spacing (target = 2)
-    #   cascade_ratio:    compare best non-suicidal cascade net gain for each side
-    # All components are in [0, 1]; weights sum to 1.0 per player.
     my_color_int = 1 if color == PlayerColor.RED else -1
     opp_color_int = -my_color_int
     is_second = (color == PlayerColor.BLUE)
     
-    # Collect current stack coordinates for each side
     my_coords = []
     opp_coords = []
     for index in range(BOARD_N * BOARD_N):
@@ -296,16 +271,13 @@ def placement_score(coord, state, color):
             
     my_coords_after = my_coords + [coord]
     
-    # Centrality ratio
     my_center_dist = sum(_dist_to_center_index(c.r * BOARD_N + c.c) for c in my_coords_after) / len(my_coords_after)
     if opp_coords:
         opp_center_dist = sum(_dist_to_center_index(c.r * BOARD_N + c.c) for c in opp_coords) / len(opp_coords)
     else:
-        # fallback: max possible distance when opp has no stacks yet
         opp_center_dist = 7.0
     centrality_ratio = opp_center_dist / (my_center_dist + opp_center_dist + EPS)
     
-    # Spacing ratio - Only meaningful when both sides have >= 2 stacks
     spacing_ratio = 0.5
     if len(my_coords_after) >= 2 and len(opp_coords) >= 2:
         def _avg_spacing(coords):
@@ -318,21 +290,17 @@ def placement_score(coord, state, color):
             
         my_spacing = _avg_spacing(my_coords_after)
         opp_spacing = _avg_spacing(opp_coords)
-        # 1/(1+|x-2|) maps distance error to (0,1]; target spacing of 2
         my_spacing_score = 1.0 / (1.0 + abs(my_spacing - 2.0))
         opp_spacing_score = 1.0 / (1.0 + abs(opp_spacing - 2.0))
         spacing_ratio = my_spacing_score / (my_spacing_score + opp_spacing_score + EPS)
         
-    # Cascade ratio - Only meaningful once the opponent has at least one stack
     cascade_ratio = 0.5
     if opp_coords:
-        # Simulate the new stack being placed before evaluating cascades
         temp_state = state.clone()
         place_idx = coord.r * BOARD_N + coord.c
         delta = INITIAL_STACK_HEIGHT if my_color_int == 1 else -INITIAL_STACK_HEIGHT
         temp_state.board[place_idx] = CENTRE + delta
         
-        # Best non-suicidal cascade net gain for our side
         my_best = 0
         for c in my_coords_after:
             src_idx = c.r * BOARD_N + c.c
@@ -341,8 +309,7 @@ def placement_score(coord, state, color):
                 net = enemy_lost - own_lost
                 if net > my_best:
                     my_best = net
-        
-        # Best non-suicidal cascade net gain for opponent's side
+                    
         opp_best = 0
         for c in opp_coords:
             src_idx = c.r * BOARD_N + c.c
@@ -353,8 +320,7 @@ def placement_score(coord, state, color):
                     opp_best = net
         
         cascade_ratio = (my_best + EPS) / (my_best + opp_best + EPS)
-    
-    # Weighted combination
+        
     if is_second:
         w_centrality = W_PLACE_CENTRALITY_SECOND
         w_spacing = W_PLACE_SPACING_SECOND
@@ -370,8 +336,6 @@ def placement_score(coord, state, color):
         w_cascade * cascade_ratio)
 
 def high_value_actions(state, my_color_int):
-    # Return only EAT actions and CASCADE actions with positive net gain.
-    # Used by quiescence search to avoid evaluating positions mid-capture.
     result = []
     for action in state.legal_actions():
         if isinstance(action, EatAction):
